@@ -1,0 +1,71 @@
+import { Controller } from '@/application/controllers/controller'
+import { HttpResponse } from '@/application/helpers/http'
+import { ZodValidator } from '@/infra/gateways/zod-validator'
+import { ServerError } from '@/application/errors/http'
+import { SimpleMockedSchema } from '@/tests/mocks'
+
+jest.mock('@/infra/gateways/zod-validator')
+
+class ControllerStub extends Controller {
+  result: HttpResponse = {
+    statusCode: 200,
+    data: 'any_data'
+  }
+
+  async perform (httpRequest: any): Promise<HttpResponse> {
+    return this.result
+  }
+}
+
+describe('Controller', () => {
+  let sut: ControllerStub
+
+  beforeEach(() => {
+    sut = new ControllerStub()
+  })
+
+  it('should return 400 validation fails', async () => {
+    const error = new Error('validation_error')
+    const ZodValidatorSpy = jest.fn().mockImplementationOnce(() => ({
+      validate: jest.fn().mockReturnValueOnce(error)
+    }))
+    jest.mocked(ZodValidator).mockImplementationOnce(ZodValidatorSpy)
+
+    const httpRespose = await sut.handle('any_value', SimpleMockedSchema)
+
+    expect(ZodValidator).toHaveBeenCalledTimes(1)
+    expect(httpRespose).toEqual({
+      statusCode: 400,
+      data: error
+    })
+  })
+
+  it('should return 500 if perform throws', async () => {
+    const error = new Error('perform_error')
+    jest.spyOn(sut, 'perform').mockRejectedValueOnce(error)
+
+    const httpRespose = await sut.handle({ name: 'any_name' }, SimpleMockedSchema)
+
+    expect(httpRespose).toEqual({
+      statusCode: 500,
+      data: new ServerError(error)
+    })
+  })
+
+  it('should return correct 500 satus and erro if perform throws without error', async () => {
+    jest.spyOn(sut, 'perform').mockRejectedValueOnce(undefined)
+
+    const httpRespose = await sut.handle({ name: 'any_name' }, SimpleMockedSchema)
+
+    expect(httpRespose).toEqual({
+      statusCode: 500,
+      data: new ServerError()
+    })
+  })
+
+  it('should return same result as perform', async () => {
+    const httpRespose = await sut.handle({ name: 'any_name' }, SimpleMockedSchema)
+
+    expect(httpRespose).toEqual(sut.result)
+  })
+})
